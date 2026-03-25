@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nudge — Your AI client memory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400;1,9..144,700;1,9..144,900&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
+<style>
+/* ─── RESET & TOKENS ─────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:     #0c0c0a;
+  --bg2:    #111110;
+  --bg3:    #161614;
+  --border: rgba(255,255,255,.07);
+  --border2:rgba(255,255,255,.12);
+  --text:   #e8e2d8;
+  --muted:  #6b6760;
+  --bright: #f5f0e8;
+  --accent: #a8f07a;
+  --accent2:#7af0b8;
+  --amber:  #f0c97a;
+  --red:    #f07a7a;
+  --glow:   rgba(168,240,122,.18);
+}
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── NOISE GRAIN ────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.04'/%3E%3C/svg%3E");
+  opacity: .6;
+}
+
+/* ─── BACKGROUND MESH ────────────────────── */
+.mesh {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+}
+.mesh-blob {
+  position: absolute; border-radius: 50%;
+  filter: blur(120px); opacity: .12;
+  animation: drift 20s ease-in-out infinite alternate;
+}
+.mesh-blob:nth-child(1) {
+  width: 700px; height: 700px;
+  background: radial-gradient(circle, #a8f07a, transparent 70%);
+  top: -200px; left: -200px;
+  animation-duration: 25s;
+}
+.mesh-blob:nth-child(2) {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, #7af0b8, transparent 70%);
+  bottom: 10%; right: -100px;
+  animation-duration: 18s; animation-delay: -8s;
+}
+.mesh-blob:nth-child(3) {
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, #f0c97a, transparent 70%);
+  top: 50%; left: 50%;
+  animation-duration: 30s; animation-delay: -15s;
+  opacity: .07;
+}
+@keyframes drift {
+  from { transform: translate(0,0) scale(1); }
+  to   { transform: translate(40px,60px) scale(1.1); }
+}
+
+/* ─── GLOBAL LAYOUT ──────────────────────── */
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+/* ─── NAV ─────────────────────────────────── */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  padding: 20px 40px;
+  display: flex; align-items: center; justify-content: space-between;
+  transition: all .3s;
+}
+nav.scrolled {
+  background: rgba(12,12,10,.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 40px;
+}
+.nav-logo {
+  font-family: 'Fraunces', serif;
+  font-size: 22px; font-weight: 700; color: var(--bright);
+  letter-spacing: -.02em;
+}
+.nav-logo span { color: var(--accent); }
+.nav-links { display: flex; align-items: center; gap: 32px; }
+.nav-links a {
+  font-size: 13px; color: var(--muted); text-decoration: none;
+  transition: color .2s;
+}
+.nav-links a:hover { color: var(--text); }
+.nav-cta {
+  background: var(--accent); color: #0c0c0a;
+  font-size: 13px; font-weight: 600;
+  padding: 9px 20px; border: none; cursor: pointer;
+  border-radius: 6px; transition: all .2s;
+  text-decoration: none; display: inline-block;
+}
+.nav-cta:hover { background: #bffa94; transform: translateY(-1px); }
+.nav-mobile-cta { display: none; }
+.mobile-sticky-cta { display: none; }
+
+/* ─── HERO ────────────────────────────────── */
+.hero {
+  min-height: 100vh;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+  padding: 120px 24px 80px;
+  position: relative;
+}
+
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(168,240,122,.1); border: 1px solid rgba(168,240,122,.2);
+  color: var(--accent); font-size: 12px; font-weight: 500;
+  padding: 6px 14px; border-radius: 20px; margin-bottom: 32px;
+  opacity: 0; animation: fadeUp .6s .1s ease forwards;
+}
+.hero-badge::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+.hero-h1 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(44px, 7vw, 88px);
+  font-weight: 900; line-height: .95;
+  letter-spacing: -.03em; color: var(--bright);
+  max-width: 880px;
+  opacity: 0; animation: fadeUp .7s .2s ease forwards;
+}
+.hero-h1 em {
+  font-style: italic; color: var(--accent);
+  position: relative; display: inline-block;
+}
+.hero-h1 em::after {
+  content: '';
+  position: absolute; bottom: -4px; left: 0; right: 0;
+  height: 3px; background: var(--accent);
+  transform: scaleX(0); transform-origin: left;
+  animation: underline .5s 1.1s ease forwards;
+}
+@keyframes underline { to { transform: scaleX(1); } }
+
+.hero-sub {
+  font-size: clamp(16px, 2vw, 19px);
+  color: var(--muted); max-width: 520px; line-height: 1.7;
+  margin: 28px auto 0;
+  opacity: 0; animation: fadeUp .7s .4s ease forwards;
+}
+
+.hero-actions {
+  display: flex; align-items: center; gap: 14px;
+  margin-top: 44px; flex-wrap: wrap; justify-content: center;
+  opacity: 0; animation: fadeUp .7s .5s ease forwards;
+}
+.btn-primary {
+  background: var(--accent); color: #0c0c0a;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 15px; font-weight: 600;
+  padding: 14px 32px; border: none; cursor: pointer;
+  border-radius: 8px; transition: all .25s;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.btn-primary:hover { background: #bffa94; transform: translateY(-2px); box-shadow: 0 16px 40px rgba(168,240,122,.25); }
+.btn-secondary {
+  font-size: 14px; color: var(--muted);
+  background: transparent; border: none; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: color .2s;
+}
+.btn-secondary:hover { color: var(--text); }
+
+.hero-social {
+  margin-top: 20px; font-size: 12px; color: var(--muted);
+  opacity: 0; animation: fadeUp .6s .7s ease forwards;
+}
+.hero-social span { color: var(--text); }
+
+/* ─── NOTIFICATION CARD (HERO) ────────────── */
+.notif-container {
+  margin-top: 72px; width: 100%;
+  display: flex; justify-content: center; align-items: flex-start; gap: 16px;
+  flex-wrap: wrap;
+  opacity: 0; animation: fadeUp .8s .8s ease forwards;
+}
+.notif-card {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 16px; padding: 18px 22px;
+  max-width: 340px; width: 100%;
+  text-align: left;
+  position: relative; overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.04);
+  transition: transform .3s ease;
+}
+.notif-card:hover { transform: translateY(-4px); }
+.notif-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(168,240,122,.4), transparent);
+}
+.notif-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.notif-icon {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: rgba(168,240,122,.15); display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+}
+.notif-from { font-size: 11px; color: var(--muted); }
+.notif-name { font-size: 13px; font-weight: 600; color: var(--bright); }
+.notif-time { font-size: 10px; color: var(--muted); margin-left: auto; }
+.notif-body { font-size: 13px; color: var(--text); line-height: 1.65; }
+.notif-body strong { color: var(--bright); }
+.notif-body .hl { color: var(--accent); font-weight: 500; }
+.notif-action {
+  margin-top: 14px; display: flex; gap: 8px;
+}
+.notif-btn {
+  font-size: 11px; font-weight: 600; padding: 6px 14px; border-radius: 5px;
+  cursor: pointer; border: none; transition: all .2s;
+}
+.notif-btn.yes { background: var(--accent); color: #0c0c0a; }
+.notif-btn.yes:hover { background: #bffa94; }
+.notif-btn.no  { background: rgba(255,255,255,.06); color: var(--muted); border: 1px solid var(--border); }
+.notif-badge {
+  position: absolute; top: -8px; right: 14px;
+  background: var(--red); color: #fff; font-size: 10px; font-weight: 700;
+  width: 18px; height: 18px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  animation: bounce 1s 2s ease infinite alternate;
+}
+@keyframes bounce { from{transform:scale(1)} to{transform:scale(1.2)} }
+
+.notif-card.secondary {
+  max-width: 280px;
+  transform: translateY(32px) rotate(1.5deg);
+  opacity: .7;
+}
+.notif-card.secondary:hover { transform: translateY(28px) rotate(0deg); opacity: 1; }
+
+/* ─── SCROLL REVEAL ──────────────────────── */
+.reveal {
+  opacity: 0; transform: translateY(32px);
+  transition: opacity .65s ease, transform .65s ease;
+}
+.reveal.visible { opacity: 1; transform: translateY(0); }
+.reveal-delay-1 { transition-delay: .1s; }
+.reveal-delay-2 { transition-delay: .2s; }
+.reveal-delay-3 { transition-delay: .3s; }
+.reveal-delay-4 { transition-delay: .4s; }
+
+@keyframes growBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(20px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+/* ─── SECTION SHARED ──────────────────────── */
+section { padding: 120px 0; position: relative; z-index: 1; }
+.section-label {
+  font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--accent); font-weight: 600; margin-bottom: 16px;
+  display: block;
+}
+.section-h2 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(32px, 5vw, 54px);
+  font-weight: 800; line-height: 1.05;
+  letter-spacing: -.03em; color: var(--bright);
+  margin-bottom: 16px;
+}
+.section-h2 em { font-style: italic; color: var(--accent); }
+.section-sub {
+  font-size: 17px; color: var(--muted); line-height: 1.7;
+  max-width: 540px;
+}
+
+/* ─── PAIN SECTION ────────────────────────── */
+.pain { background: var(--bg); }
+.pain-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
+  margin-top: 64px; border: 1px solid var(--border); border-radius: 16px;
+  overflow: hidden;
+}
+.pain-item {
+  padding: 32px; background: var(--bg2);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  transition: background .3s;
+}
+.pain-item:nth-child(2n) { border-right: none; }
+.pain-item:nth-child(3), .pain-item:nth-child(4) { border-bottom: none; }
+.pain-item:hover { background: var(--bg3); }
+.pain-emoji { font-size: 28px; margin-bottom: 16px; display: block; }
+.pain-title { font-size: 16px; font-weight: 600; color: var(--bright); margin-bottom: 8px; }
+.pain-desc { font-size: 13px; color: var(--muted); line-height: 1.7; }
+
+.pain-quote-strip {
+  margin-top: 48px; padding: 28px 36px;
+  background: rgba(168,240,122,.05); border: 1px solid rgba(168,240,122,.12);
+  border-radius: 12px;
+  display: flex; align-items: flex-start; gap: 20px;
+}
+.pq-mark {
+  font-family: 'Fraunces', serif; font-size: 64px; line-height: .7;
+  color: var(--accent); opacity: .3; flex-shrink: 0;
+}
+.pq-text { font-size: 16px; color: var(--text); line-height: 1.7; font-style: italic; }
+.pq-src { font-size: 11px; color: var(--muted); margin-top: 10px; }
+.pq-src span { color: var(--accent); }
+
+/* ─── HOW IT WORKS ────────────────────────── */
+.how { background: var(--bg); }
+.steps {
+  display: grid; grid-template-columns: repeat(3,1fr); gap: 2px;
+  margin-top: 64px;
+}
+.step {
+  padding: 40px 32px; background: var(--bg2);
+  border: 1px solid var(--border); border-radius: 0;
+  position: relative; overflow: hidden;
+  transition: border-color .3s, background .3s;
+}
+.step:first-child { border-radius: 16px 0 0 16px; }
+.step:last-child  { border-radius: 0 16px 16px 0; }
+.step:hover { background: var(--bg3); border-color: var(--border2); }
+.step::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transform: scaleX(0); transform-origin: left;
+  transition: transform .4s ease;
+}
+.step:hover::before { transform: scaleX(1); }
+.step-num {
+  font-family: 'Fraunces', serif;
+  font-size: 64px; font-weight: 900; line-height: 1;
+  color: rgba(168,240,122,.1); margin-bottom: 24px;
+  display: block;
+}
+.step-title {
+  font-size: 18px; font-weight: 600; color: var(--bright);
+  margin-bottom: 12px; line-height: 1.3;
+}
+.step-desc { font-size: 13px; color: var(--muted); line-height: 1.75; }
+
+/* ─── NUDGE DEMO ──────────────────────────── */
+.demo { background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.demo-inner {
+  display: grid; grid-template-columns: 1fr 1.2fr; gap: 80px;
+  align-items: center;
+}
+.demo-messages {
+  display: flex; flex-direction: column; gap: 12px;
+}
+.demo-msg {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px 20px;
+  position: relative; overflow: hidden;
+  transition: all .3s;
+}
+.demo-msg:hover { border-color: var(--border2); transform: translateX(4px); }
+.demo-msg.active {
+  border-color: rgba(168,240,122,.3);
+  background: rgba(168,240,122,.04);
+}
+.demo-msg.active::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px; background: var(--accent);
+}
+.demo-msg-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.demo-channel {
+  font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 4px;
+}
+.ch-whatsapp { background: rgba(37,211,102,.15); color: #25d366; }
+.ch-email    { background: rgba(96,165,250,.12); color: #60a5fa; }
+.demo-time { font-size: 10px; color: var(--muted); }
+.demo-msg-text { font-size: 13px; color: var(--text); line-height: 1.65; }
+.demo-msg-text strong { color: var(--bright); }
+.demo-msg-text .g { color: var(--accent); }
+.demo-msg-text .a { color: var(--amber); }
+
+.demo-copy .section-sub { max-width: 420px; }
+.demo-stats {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
+  margin-top: 40px;
+}
+.stat-box {
+  background: var(--bg); border: 1px solid var(--border);
+  padding: 20px;
+}
+.stat-num {
+  font-family: 'Fraunces', serif;
+  font-size: 36px; font-weight: 800; color: var(--bright);
+  line-height: 1; margin-bottom: 4px;
+}
+.stat-num .accent { color: var(--accent); }
+.stat-label { font-size: 11px; color: var(--muted); }
+
+/* ─── FEATURES ────────────────────────────── */
+.features { background: var(--bg); }
+.features-grid {
+  display: grid; grid-template-columns: repeat(3,1fr); gap: 2px;
+  margin-top: 64px;
+}
+.feat {
+  padding: 36px 28px; background: var(--bg2);
+  border: 1px solid var(--border);
+  transition: all .3s; cursor: default;
+  position: relative; overflow: hidden;
+}
+.feat:first-child { border-radius: 16px 0 0 0; }
+.feat:nth-child(3) { border-radius: 0 16px 0 0; }
+.feat:nth-child(4) { border-radius: 0 0 0 16px; }
+.feat:last-child  { border-radius: 0 0 16px 0; }
+.feat:hover { background: var(--bg3); transform: translateY(-3px); box-shadow: 0 20px 60px rgba(0,0,0,.4); z-index: 2; }
+.feat-ico {
+  width: 44px; height: 44px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; margin-bottom: 20px;
+  background: rgba(168,240,122,.1); border: 1px solid rgba(168,240,122,.15);
+}
+.feat-title { font-size: 16px; font-weight: 600; color: var(--bright); margin-bottom: 10px; }
+.feat-desc  { font-size: 13px; color: var(--muted); line-height: 1.75; }
+.feat-tag {
+  margin-top: 16px; display: inline-block;
+  font-size: 10px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600;
+  padding: 3px 10px; border-radius: 4px;
+  background: rgba(168,240,122,.08); border: 1px solid rgba(168,240,122,.15);
+  color: var(--accent);
+}
+.feat-tag.v2 { background: rgba(255,255,255,.04); border-color: var(--border); color: var(--muted); }
+
+/* ─── SOCIAL PROOF ────────────────────────── */
+.proof { background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.proof-header { text-align: center; margin-bottom: 64px; }
+.proof-grid {
+  display: grid; grid-template-columns: repeat(3,1fr); gap: 16px;
+}
+.proof-card {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 14px; padding: 28px;
+  transition: all .3s;
+}
+.proof-card:hover { border-color: var(--border2); transform: translateY(-3px); }
+.proof-stars { color: var(--amber); font-size: 13px; margin-bottom: 14px; letter-spacing: 2px; }
+.proof-text { font-size: 14px; color: var(--text); line-height: 1.75; font-style: italic; margin-bottom: 20px; }
+.proof-author { display: flex; align-items: center; gap: 12px; }
+.proof-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--bg3); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center; font-size: 16px;
+}
+.proof-name { font-size: 13px; font-weight: 600; color: var(--bright); }
+.proof-role { font-size: 11px; color: var(--muted); }
+.proof-src {
+  font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--accent); margin-left: auto;
+}
+
+/* ─── PRICING ─────────────────────────────── */
+.pricing { background: var(--bg); }
+.pricing-header { text-align: center; margin-bottom: 64px; }
+.pricing-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  max-width: 720px; margin: 0 auto;
+}
+.tier {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 20px; padding: 40px 36px;
+  transition: all .3s;
+}
+.tier:hover { border-color: var(--border2); }
+.tier.featured {
+  background: linear-gradient(135deg, rgba(168,240,122,.08), rgba(122,240,184,.04));
+  border-color: rgba(168,240,122,.25);
+  position: relative;
+}
+.tier.featured::before {
+  content: 'Most popular';
+  position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+  background: var(--accent); color: #0c0c0a;
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  padding: 4px 14px; border-radius: 20px;
+}
+.tier-name {
+  font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 16px;
+}
+.tier-price {
+  font-family: 'Fraunces', serif;
+  font-size: 56px; font-weight: 900; line-height: 1; color: var(--bright);
+  letter-spacing: -.03em; margin-bottom: 4px;
+}
+.tier-price sup { font-size: 24px; vertical-align: super; }
+.tier-period { font-size: 13px; color: var(--muted); margin-bottom: 32px; }
+.tier-features { list-style: none; margin-bottom: 32px; }
+.tier-features li {
+  font-size: 14px; color: var(--text); padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.tier-features li:last-child { border: none; }
+.tier-features li .check { color: var(--accent); font-size: 14px; flex-shrink: 0; }
+.tier-features li .dim  { color: var(--muted); }
+.tier-cta {
+  width: 100%; font-family: 'DM Sans', sans-serif;
+  font-size: 15px; font-weight: 600; padding: 15px;
+  border-radius: 10px; cursor: pointer; border: none;
+  transition: all .25s;
+}
+.tier.free .tier-cta {
+  background: rgba(255,255,255,.06); color: var(--text);
+  border: 1px solid var(--border);
+}
+.tier.free .tier-cta:hover { background: rgba(255,255,255,.1); }
+.tier.featured .tier-cta {
+  background: var(--accent); color: #0c0c0a;
+}
+.tier.featured .tier-cta:hover { background: #bffa94; transform: translateY(-1px); box-shadow: 0 12px 32px rgba(168,240,122,.3); }
+
+.pricing-note {
+  text-align: center; margin-top: 28px;
+  font-size: 13px; color: var(--muted);
+}
+.pricing-note span { color: var(--text); }
+
+/* ─── FINAL CTA ───────────────────────────── */
+.final {
+  background: var(--bg);
+  text-align: center;
+  padding: 160px 24px;
+  position: relative; overflow: hidden;
+}
+.final-glow {
+  position: absolute; bottom: -200px; left: 50%; transform: translateX(-50%);
+  width: 800px; height: 600px;
+  background: radial-gradient(ellipse, rgba(168,240,122,.1), transparent 65%);
+  pointer-events: none;
+}
+.final-h2 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(40px, 6vw, 72px);
+  font-weight: 900; line-height: 1;
+  letter-spacing: -.03em; color: var(--bright);
+  max-width: 700px; margin: 0 auto 24px;
+}
+.final-h2 em { font-style: italic; color: var(--accent); }
+.final-sub {
+  font-size: 17px; color: var(--muted);
+  max-width: 440px; margin: 0 auto 48px; line-height: 1.7;
+}
+.final-note { font-size: 12px; color: var(--muted); margin-top: 16px; }
+
+/* ─── FOOTER ──────────────────────────────── */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 32px 40px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 16px;
+  position: relative; z-index: 1;
+}
+.footer-logo {
+  font-family: 'Fraunces', serif;
+  font-size: 18px; font-weight: 700; color: var(--muted);
+}
+.footer-logo span { color: var(--accent); }
+.footer-links { display: flex; gap: 24px; }
+.footer-links a { font-size: 12px; color: var(--muted); text-decoration: none; }
+.footer-links a:hover { color: var(--text); }
+.footer-copy { font-size: 12px; color: var(--muted); }
+
+/* ─── HAMBURGER MOBILE ────────────────────── */
+.hamburger { display: none; background: none; border: none; cursor: pointer; padding: 4px; }
+.hamburger span { display: block; width: 22px; height: 2px; background: var(--text); margin: 5px 0; border-radius: 2px; transition: all .3s; }
+
+/* ─── DIVIDER ─────────────────────────────── */
+.divider {
+  height: 1px; background: linear-gradient(90deg, transparent, var(--border), transparent);
+  margin: 0;
+}
+
+/* ─── RESPONSIVE ──────────────────────────── */
+@media (max-width: 900px) {
+  .nav-links { display: none; }
+  .nav-cta { display: none; }
+  .nav-mobile-cta { display: inline-block; }
+  .mobile-sticky-cta { display: flex; }
+
+  .pain-grid { grid-template-columns: 1fr; }
+  .pain-item:nth-child(2n) { border-right: 1px solid var(--border); }
+  .pain-item:nth-child(3), .pain-item:nth-child(4) { border-bottom: 1px solid var(--border); }
+  .pain-item:last-child { border-bottom: none; }
+
+  .steps { grid-template-columns: 1fr; }
+  .step { border-radius: 0 !important; }
+  .step:first-child { border-radius: 16px 16px 0 0 !important; }
+  .step:last-child  { border-radius: 0 0 16px 16px !important; }
+
+  .demo-inner { grid-template-columns: 1fr; gap: 48px; }
+  .features-grid { grid-template-columns: 1fr; }
+  .feat { border-radius: 0 !important; }
+  .feat:first-child { border-radius: 16px 16px 0 0 !important; }
+  .feat:last-child  { border-radius: 0 0 16px 16px !important; }
+
+  .proof-grid { grid-template-columns: 1fr; }
+  .pricing-grid { grid-template-columns: 1fr; }
+
+  .notif-container { flex-direction: column; align-items: center; }
+  .notif-card.secondary { transform: none; }
+
+  nav { padding: 16px 24px; }
+  nav.scrolled { padding: 12px 24px; }
+
+  footer { flex-direction: column; text-align: center; padding: 24px; }
+  .footer-links { justify-content: center; }
+
+  .pain-quote-strip { flex-direction: column; gap: 8px; }
+}
+
+@media (max-width: 500px) {
+  .hero { padding: 100px 20px 60px; }
+  section { padding: 80px 0; }
+  .demo-stats { grid-template-columns: 1fr; }
+}
+
+ to { opacity:1; transform:translateY(0); } }
+
+
+/* ── MOBILE STICKY CTA ── */
+.mobile-sticky-cta {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 100;
+  padding: 12px 20px 20px;
+  background: linear-gradient(to top, rgba(12,12,10,1) 60%, rgba(12,12,10,0));
+  pointer-events: none;
+}
+.mobile-sticky-cta a {
+  display: block;
+  background: var(--accent);
+  color: #0c0c0a;
+  font-family: "DM Sans", sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  padding: 15px 24px;
+  border-radius: 10px;
+  text-decoration: none;
+  pointer-events: all;
+  box-shadow: 0 8px 32px rgba(168,240,122,0.3);
+  transition: background .2s;
+}
+.mobile-sticky-cta a:hover { background: #bffa94; }
+.mobile-sticky-cta .sticky-sub {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+  pointer-events: none;
+}
+</style>
+</head>
+<body>
+
+<!-- MESH BG -->
+<div class="mesh" aria-hidden="true">
+  <div class="mesh-blob"></div>
+  <div class="mesh-blob"></div>
+  <div class="mesh-blob"></div>
+</div>
+
+<!-- ═══ NAV ═══ -->
+<nav id="nav">
+  <div class="nav-logo">nudge<span>.</span></div>
+  <div class="nav-links">
+    <a href="#how">How it works</a>
+    <a href="#features">Features</a>
+    <a href="#pricing">Pricing</a>
+  </div>
+  <a href="#pricing" class="nav-cta">14 days free →</a>
+  <a href="#pricing" class="nav-mobile-cta nav-cta">14 days free</a>
+
+</nav>
+
+<!-- ═══ HERO ═══ -->
+<section class="hero">
+  <div class="hero-badge">⚡ Early bird — 53 of 100 spots left · €9/month forever</div>
+
+  <h1 class="hero-h1">
+    Stop losing clients<br>to <em>forgotten</em> follow-ups
+  </h1>
+
+  <p class="hero-sub">
+    Nudge is the AI that remembers your client conversations and tells you exactly who to reach out to — and why — every single morning.
+  </p>
+
+  <div class="hero-actions">
+    <button class="btn-primary" onclick="document.getElementById('pricing').scrollIntoView({behavior:'smooth'})">
+      Get started free
+      <span>→</span>
+    </button>
+    <button class="btn-secondary" onclick="document.getElementById('how').scrollIntoView({behavior:'smooth'})">
+      See how it works ↓
+    </button>
+  </div>
+
+  <p class="hero-social">No credit card required · <span>14 days full access free</span> · then €9/month early bird</p>
+
+  <!-- NOTIFICATION CARDS -->
+  <div class="notif-container">
+
+    <div class="notif-card">
+      <div class="notif-badge">3</div>
+      <div class="notif-top">
+        <div class="notif-icon">🔔</div>
+        <div>
+          <div class="notif-from">Nudge · Daily briefing</div>
+          <div class="notif-name">Good morning, Sarah</div>
+        </div>
+        <div class="notif-time">08:30</div>
+      </div>
+      <div class="notif-body">
+        <strong>Daan Visser</strong> asked about your September availability <span class="hl">21 days ago</span> — you never sent a follow-up. He mentioned a <span class="hl">€4,200 project</span> starting in Q4.
+      </div>
+      <div class="notif-action">
+        <button class="notif-btn yes">Follow up now →</button>
+        <button class="notif-btn no">Snooze</button>
+      </div>
+    </div>
+
+    <div class="notif-card secondary">
+      <div class="notif-top">
+        <div class="notif-icon" style="background:rgba(122,240,184,.12)">📋</div>
+        <div>
+          <div class="notif-from">Nudge · Weekly digest</div>
+          <div class="notif-name">Your Sunday briefing</div>
+        </div>
+        <div class="notif-time">Sun 10:00</div>
+      </div>
+      <div class="notif-body">
+        <strong>3 leads to reach out to this week.</strong><br>
+        Lena K. — sent proposal, no reply (12 days)<br>
+        Marco B. — project ended, check in for next work<br>
+        Iris T. — warm lead from LinkedIn intro
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══ PAIN ═══ -->
+<section class="pain" id="pain">
+  <div class="wrap">
+    <div class="reveal">
+      <span class="section-label">The problem</span>
+      <h2 class="section-h2">Freelancers are<br>leaving money <em>on the table</em></h2>
+      <p class="section-sub">Not because of bad leads. Not because of poor work. Because of the one thing every freelancer is terrible at: following up.</p>
+    </div>
+
+    <div class="pain-grid" style="margin-top:56px">
+      <div class="pain-item reveal reveal-delay-1">
+        <span class="pain-emoji">😩</span>
+        <div class="pain-title">"I forgot to follow up again"</div>
+        <div class="pain-desc">You sent the proposal. You did great work. You just... never sent that one email. And the client went with someone who did.</div>
+      </div>
+      <div class="pain-item reveal reveal-delay-2">
+        <span class="pain-emoji">📊</span>
+        <div class="pain-title">CRMs built for sales teams of 50</div>
+        <div class="pain-desc">HubSpot, Salesforce, Pipedrive — all designed for enterprise sales workflows. You just want to know who to call today.</div>
+      </div>
+      <div class="pain-item reveal reveal-delay-3">
+        <span class="pain-emoji">🗂️</span>
+        <div class="pain-title">Spreadsheets that never stay up to date</div>
+        <div class="pain-desc">"My system" is inbox + spreadsheet + calendar + memory. It works until it doesn't — usually at the worst possible moment.</div>
+      </div>
+      <div class="pain-item reveal reveal-delay-4">
+        <span class="pain-emoji">💸</span>
+        <div class="pain-title">$12,000 lost per year on average</div>
+        <div class="pain-desc">That's what freelancers lose annually to poor client management — missed follow-ups, dropped leads, lapsed relationships.</div>
+      </div>
+    </div>
+
+    <div class="pain-quote-strip reveal" style="margin-top:32px">
+      <div class="pq-mark">"</div>
+      <div>
+        <div class="pq-text">I just want: add lead → send proposal → follow up after 3 days. Why is every CRM a 47-step configuration process?</div>
+        <div class="pq-src">— r/freelance · <span>1.8K upvotes</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══ HOW IT WORKS ═══ -->
+<section class="how" id="how">
+  <div class="wrap">
+    <div class="reveal" style="text-align:center; margin: 0 auto">
+      <span class="section-label">How it works</span>
+      <h2 class="section-h2" style="max-width:500px;margin:0 auto">Three steps.<br>Then just <em>show up</em>.</h2>
+    </div>
+
+    <div class="steps">
+      <div class="step reveal reveal-delay-1">
+        <span class="step-num">01</span>
+        <div class="step-title">Connect Gmail. Add your first 3 leads.</div>
+        <div class="step-desc">Sign in with Google, add leads with one field — a name and a single note. Nudge automatically detects when you last emailed them. Setup takes under 2 minutes.</div>
+      </div>
+      <div class="step reveal reveal-delay-2">
+        <span class="step-num">02</span>
+        <div class="step-title">Nudge reads your conversation history.</div>
+        <div class="step-desc">Not the full email — a 2-sentence AI summary. "Daan asked about Q4 availability, you said you'd follow up." Context without surveillance. Your data stays yours.</div>
+      </div>
+      <div class="step reveal reveal-delay-3">
+        <span class="step-num">03</span>
+        <div class="step-title">Get a nudge when it matters most.</div>
+        <div class="step-desc">Every morning at 08:30 — email or WhatsApp. One specific lead. One clear reason. One action. No dashboard to open. No login required to get value.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══ DEMO ═══ -->
+<section class="demo" id="demo">
+  <div class="wrap">
+    <div class="demo-inner">
+      <div class="demo-messages">
+        <div class="demo-msg active reveal reveal-delay-1">
+          <div class="demo-msg-header">
+            <span class="demo-channel ch-whatsapp">WhatsApp</span>
+            <span class="demo-time">Mon · 08:30</span>
+          </div>
+          <div class="demo-msg-text">
+            Good morning! <strong>Daan Visser</strong> asked about your September availability <span class="g">21 days ago</span>. He mentioned a Q4 redesign project — you said you'd send a quote by end of week. Worth a short follow-up today?
+          </div>
+        </div>
+        <div class="demo-msg reveal reveal-delay-2">
+          <div class="demo-msg-header">
+            <span class="demo-channel ch-email">Email</span>
+            <span class="demo-time">Wed · 08:30</span>
+          </div>
+          <div class="demo-msg-text">
+            <strong>Lena K.</strong> hasn't replied to your proposal sent <span class="a">12 days ago</span>. Her last message mentioned a tight launch deadline — she might be under pressure. A brief check-in could be well-timed.
+          </div>
+        </div>
+        <div class="demo-msg reveal reveal-delay-3">
+          <div class="demo-msg-header">
+            <span class="demo-channel ch-whatsapp">Sunday digest</span>
+            <span class="demo-time">Sun · 10:00</span>
+          </div>
+          <div class="demo-msg-text">
+            <strong>Your week ahead.</strong> Three leads worth reaching out to: <span class="g">Marco B.</span> (project wrapped, check for next work), <span class="g">Iris T.</span> (warm intro from LinkedIn, gone quiet), <span class="g">Tom V.</span> (said maybe in September — it's September).
+          </div>
+        </div>
+      </div>
+
+      <div class="demo-copy reveal">
+        <span class="section-label">The nudge difference</span>
+        <h2 class="section-h2">Not just<br><em>when</em> — but why</h2>
+        <p class="section-sub">Every other CRM tells you "no contact in 7 days." Nudge tells you what was said, why this person matters right now, and what to do about it. The difference between a reminder you ignore and one you act on.</p>
+
+        <div class="demo-stats">
+          <div class="stat-box">
+            <div class="stat-num">$<span class="accent">12K</span></div>
+            <div class="stat-label">avg. annual loss from missed follow-ups</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-num"><span class="accent">83</span>%</div>
+            <div class="stat-label">of $100K+ freelancers use a CRM system</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-num"><span class="accent">2</span>min</div>
+            <div class="stat-label">average setup time, no configuration needed</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-num"><span class="accent">0</span></div>
+            <div class="stat-label">dashboards to open to get value from Nudge</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══ FEATURES ═══ -->
+<section class="features" id="features">
+  <div class="wrap">
+    <div class="reveal" style="max-width:560px">
+      <span class="section-label">Features</span>
+      <h2 class="section-h2">Everything you need.<br><em>Nothing you don't.</em></h2>
+      <p class="section-sub">Built on the belief that the best tool is the one you actually use. No onboarding calls. No certification course. No sales team will ever contact you.</p>
+    </div>
+
+    <div class="features-grid" style="margin-top:52px">
+      <div class="feat reveal reveal-delay-1">
+        <div class="feat-ico">🧠</div>
+        <div class="feat-title">Contextual AI nudges</div>
+        <div class="feat-desc">Not rule-based reminders — genuine context from your last conversation. Nudge understands what was said and why now is the right time to follow up.</div>
+        <span class="feat-tag">MVP</span>
+      </div>
+      <div class="feat reveal reveal-delay-2">
+        <div class="feat-ico">📧</div>
+        <div class="feat-title">Gmail auto-sync</div>
+        <div class="feat-desc">Connect once, forget forever. Nudge silently tracks your last email date per lead. No manual data entry, no spreadsheet updates. Read-only access — we never write or store your emails.</div>
+        <span class="feat-tag">MVP</span>
+      </div>
+      <div class="feat reveal reveal-delay-3">
+        <div class="feat-ico">📱</div>
+        <div class="feat-title">WhatsApp or email delivery</div>
+        <div class="feat-desc">Receive nudges where you actually live. WhatsApp messages feel like a message from a smart colleague — not a software notification. Email for those who prefer to start their day in their inbox.</div>
+        <span class="feat-tag">MVP</span>
+      </div>
+      <div class="feat reveal reveal-delay-1">
+        <div class="feat-ico">🗓️</div>
+        <div class="feat-title">Sunday weekly digest</div>
+        <div class="feat-desc">Every Sunday morning: a prioritized list of exactly 3 leads worth reaching out to this week. Ranked by recency, context, and opportunity signal. 30 seconds to read, an hour saved.</div>
+        <span class="feat-tag">MVP</span>
+      </div>
+      <div class="feat reveal reveal-delay-2">
+        <div class="feat-ico">⚡</div>
+        <div class="feat-title">One-field lead management</div>
+        <div class="feat-desc">Name, note, last contact — that's it. The philosophy: if you need to write more than one sentence about a lead, you need a notes app, not a CRM. Nudge is a CRM.</div>
+        <span class="feat-tag">MVP</span>
+      </div>
+      <div class="feat reveal reveal-delay-3">
+        <div class="feat-ico">📄</div>
+        <div class="feat-title">Proposal follow-up tracking</div>
+        <div class="feat-desc">Nudge detects when you've sent a proposal and automatically flags it if there's been no reply after 5 days. Never let a proposal go cold again.</div>
+        <span class="feat-tag v2">Coming in V2</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══ SOCIAL PROOF ═══ -->
+<section class="proof" id="proof">
+  <div class="wrap">
+    <div class="proof-header reveal">
+      <span class="section-label">What people are saying</span>
+      <h2 class="section-h2">Validated by<br>real <em>freelancers</em></h2>
+    </div>
+
+    <div class="proof-grid">
+      <div class="proof-card reveal reveal-delay-1">
+        <div class="proof-stars">★★★★★</div>
+        <div class="proof-text">"The concept is sound. The painful truth of freelancer tools is that this is exactly the moment they'd feel the pain sharply enough to pay — and act."</div>
+        <div class="proof-author">
+          <div class="proof-avatar">👤</div>
+          <div>
+            <div class="proof-name">ProductStrategist_K</div>
+            <div class="proof-role">Senior Product Manager</div>
+          </div>
+          <div class="proof-src">r/freelance</div>
+        </div>
+      </div>
+      <div class="proof-card reveal reveal-delay-2">
+        <div class="proof-stars">★★★★★</div>
+        <div class="proof-text">"The distinction between rule-based and contextual is exactly the right one. The interesting version is the AI that reads conversation history and decides what to nudge about. That's what I want."</div>
+        <div class="proof-author">
+          <div class="proof-avatar">💻</div>
+          <div>
+            <div class="proof-name">indie_dev_Marco</div>
+            <div class="proof-role">Freelance Developer</div>
+          </div>
+          <div class="proof-src">Reddit</div>
+        </div>
+      </div>
+      <div class="proof-card reveal reveal-delay-3">
+        <div class="proof-stars">★★★★★</div>
+        <div class="proof-text">"I was going through my sent folder and found 11 proposals I never followed up on. Rough math: at least $8,400 left on the table. Not because the leads were bad. Because I forgot."</div>
+        <div class="proof-author">
+          <div class="proof-avatar">🎨</div>
+          <div>
+            <div class="proof-name">sarah_freelancedesign</div>
+            <div class="proof-role">Freelance Designer</div>
+          </div>
+          <div class="proof-src">r/entrepreneur</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══ PRICING ═══ -->
+<section class="pricing" id="pricing">
+  <div class="wrap">
+
+    <!-- Early bird urgency bar -->
+    <div class="reveal" style="margin-bottom:48px">
+      <div style="background:rgba(168,240,122,0.07);border:1px solid rgba(168,240,122,0.2);border-radius:14px;padding:20px 28px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:4px">⚡ Early bird offer — limited spots</div>
+          <div style="font-size:15px;color:var(--bright);font-weight:600">Lock in €9/month forever. Price goes to €19 at 100 users.</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:200px">
+          <div style="display:flex;justify-content:space-between;font-size:11px">
+            <span style="color:var(--muted)">Spots claimed</span>
+            <span style="color:var(--accent);font-weight:700">53 / 100</span>
+          </div>
+          <div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden">
+            <div style="width:53%;height:100%;background:linear-gradient(90deg,var(--accent),#7af0b8);border-radius:4px"></div>
+          </div>
+          <div style="font-size:11px;color:var(--muted)">47 spots remaining at €9/month</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pricing-header reveal">
+      <span class="section-label">Pricing</span>
+      <h2 class="section-h2">14 days free.<br>Then <em>€9/month</em> — forever.</h2>
+      <p class="section-sub" style="margin:0 auto">Build the habit first. Pay only when you've seen it work. Early bird price locked in for life — never increases for you.</p>
+    </div>
+
+    <!-- Single featured tier -->
+    <div class="reveal" style="max-width:520px;margin:0 auto 32px">
+      <div class="tier featured" style="position:relative">
+        <div style="position:absolute;top:-14px;right:24px;display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:var(--muted);text-decoration:line-through">€19/month</span>
+          <span style="background:var(--accent);color:#0c0c0a;font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px">EARLY BIRD</span>
+        </div>
+        <div class="tier-name">Early bird · First 100 users</div>
+        <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:4px">
+          <div class="tier-price"><sup>€</sup>9</div>
+          <div style="font-size:14px;color:rgba(255,255,255,0.4);text-decoration:line-through">€19</div>
+        </div>
+        <div class="tier-period">per month · locked forever · 14 days free first</div>
+        <ul class="tier-features">
+          <li><span class="check">✓</span> <strong>14 days completely free</strong> — no card needed</li>
+          <li><span class="check">✓</span> Unlimited active leads</li>
+          <li><span class="check">✓</span> Daily AI nudge — contextual, not rule-based</li>
+          <li><span class="check">✓</span> Sunday digest — top 3 leads every week</li>
+          <li><span class="check">✓</span> Gmail auto-sync — last contact auto-detected</li>
+          <li><span class="check">✓</span> WhatsApp or email delivery — your choice</li>
+          <li><span class="check">✓</span> Cancel anytime in one click</li>
+          <li style="border-top:1px solid rgba(168,240,122,0.15);padding-top:12px;margin-top:4px">
+            <span style="color:var(--accent);font-size:13px;font-weight:600">🔒 Price locked at €9 forever — even when we raise it to €19</span>
+          </li>
+        </ul>
+        <button class="tier-cta" onclick="alert('Coming soon!')" style="font-size:15px;padding:16px">
+          Start free — 14 days, no card →
+        </button>
+      </div>
+    </div>
+
+    <!-- Trust signals -->
+    <div class="reveal" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-width:520px;margin:0 auto">
+      <div style="text-align:center;padding:16px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px">
+        <div style="font-size:20px;margin-bottom:6px">🔒</div>
+        <div style="font-size:12px;font-weight:600;color:var(--bright);margin-bottom:2px">No card needed</div>
+        <div style="font-size:11px;color:var(--muted)">Start the trial instantly</div>
+      </div>
+      <div style="text-align:center;padding:16px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px">
+        <div style="font-size:20px;margin-bottom:6px">⚡</div>
+        <div style="font-size:12px;font-weight:600;color:var(--bright);margin-bottom:2px">2-min setup</div>
+        <div style="font-size:11px;color:var(--muted)">First nudge tomorrow morning</div>
+      </div>
+      <div style="text-align:center;padding:16px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px">
+        <div style="font-size:20px;margin-bottom:6px">💸</div>
+        <div style="font-size:12px;font-weight:600;color:var(--bright);margin-bottom:2px">Cancel anytime</div>
+        <div style="font-size:11px;color:var(--muted)">One click, no questions</div>
+      </div>
+    </div>
+
+    <!-- ROI math -->
+    <div class="reveal" style="max-width:520px;margin:20px auto 0;padding:20px 24px;background:rgba(168,240,122,0.05);border:1px solid rgba(168,240,122,0.15);border-radius:12px">
+      <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);font-weight:600;margin-bottom:10px">The math is simple</div>
+      <p style="font-size:14px;color:var(--text);line-height:1.75">
+        You charge <strong style="color:var(--bright)">€50/hour</strong>. One recovered follow-up = <strong style="color:var(--bright)">€500+ project</strong>. Nudge costs <strong style="color:var(--bright)">€108/year</strong>. You earn back your full investment by recovering just <strong style="color:var(--accent)">2 hours of billable work per year</strong>. Most users do that in week one.
+      </p>
+    </div>
+
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══ FINAL CTA ═══ -->
+<section class="final" id="cta">
+  <div class="final-glow"></div>
+  <div style="position:relative;z-index:1">
+    <div class="reveal">
+      <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(168,240,122,0.12);border:1px solid rgba(168,240,122,0.25);border-radius:20px;padding:6px 16px;margin-bottom:28px;font-size:12px;font-weight:600;color:var(--accent)">
+        ⚡ 47 early bird spots remaining at €9/month
+      </div>
+      <h2 class="final-h2">The follow-up you<br>keep forgetting is<br>worth <em>€500</em>.</h2>
+      <p class="final-sub">14 days free. No card. 2 minutes to set up. Tomorrow morning you get your first nudge — and you'll wonder how you managed without it.</p>
+      <button class="btn-primary" style="font-size:16px;padding:16px 48px" onclick="alert('Coming soon!')">
+        Start free — claim your €9 spot →
+      </button>
+      <p class="final-note" style="margin-top:14px">14 days free · No credit card · €9/month after · Cancel anytime</p>
+      <p style="font-size:11px;color:var(--muted);margin-top:8px">Price goes to €19/month after first 100 users. Lock it in now.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FOOTER ═══ -->
+<footer>
+  <div class="footer-logo">nudge<span>.</span></div>
+  <div class="footer-links">
+    <a href="#">Privacy</a>
+    <a href="#">Terms</a>
+    <a href="#">Contact</a>
+  </div>
+  <div class="footer-copy">© 2026 Nudge. All rights reserved.</div>
+</footer>
+
+<!-- ─── JS ─────────────────────────────────── -->
+<script>
+/* NAV SCROLL */
+const nav = document.getElementById('nav');
+window.addEventListener('scroll', () => {
+  nav.classList.toggle('scrolled', window.scrollY > 40);
+}, { passive: true });
+
+/* SCROLL REVEAL */
+const revealEls = document.querySelectorAll('.reveal');
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+      io.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+revealEls.forEach(el => io.observe(el));
+
+/* NOTIF CARD TYPING EFFECT */
+const messages = [
+  "Good morning! <strong>Daan Visser</strong> asked about your September availability <span class='hl'>21 days ago</span>. He mentioned a Q4 redesign project worth <span class='hl'>€4,200</span>. Worth a follow-up today?",
+  "Heads up — <strong>Lena K.</strong> sent you a brief last month and you replied enthusiastically. <span class='hl'>No contact in 14 days</span>. She might be comparing quotes right now.",
+  "<strong>Marco B.'s</strong> project wrapped 3 weeks ago. Clients who had a great experience are <span class='hl'>4x more likely</span> to hire again within 60 days. Now is the right moment to check in.",
+];
+let msgIndex = 0;
+const notifBody = document.querySelector('.notif-card .notif-body');
+
+function cycleMessage() {
+  if (!notifBody) return;
+  notifBody.style.opacity = '0';
+  notifBody.style.transform = 'translateY(8px)';
+  setTimeout(() => {
+    msgIndex = (msgIndex + 1) % messages.length;
+    notifBody.innerHTML = messages[msgIndex];
+    notifBody.style.transition = 'opacity .4s ease, transform .4s ease';
+    notifBody.style.opacity = '1';
+    notifBody.style.transform = 'translateY(0)';
+  }, 300);
+}
+notifBody && (notifBody.style.transition = 'opacity .4s ease, transform .4s ease');
+setInterval(cycleMessage, 4000);
+
+/* DEMO CARD CYCLING */
+const demoMsgs = document.querySelectorAll('.demo-msg');
+let demoIndex = 0;
+setInterval(() => {
+  demoMsgs.forEach(m => m.classList.remove('active'));
+  demoIndex = (demoIndex + 1) % demoMsgs.length;
+  demoMsgs[demoIndex].classList.add('active');
+}, 3000);
+
+/* COUNTER ANIMATION */
+function animateCounter(el, target, suffix = '') {
+  let start = 0;
+  const duration = 1200;
+  const step = (timestamp) => {
+    if (!start) start = timestamp;
+    const progress = Math.min((timestamp - start) / duration, 1);
+    const val = Math.floor(progress * target);
+    el.textContent = val + suffix;
+    if (progress < 1) requestAnimationFrame(step);
+    else el.textContent = target + suffix;
+  };
+  requestAnimationFrame(step);
+}
+
+const statNums = document.querySelectorAll('.stat-num');
+const statIO = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const el = e.target;
+      const text = el.textContent;
+      if (text.includes('12K')) {
+        el.innerHTML = '$<span class="accent">0</span>K';
+        animateCounter(el.querySelector('.accent'), 12);
+      } else if (text.includes('83')) {
+        el.innerHTML = '<span class="accent">0</span>%';
+        animateCounter(el.querySelector('.accent'), 83);
+      }
+      statIO.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.5 });
+statNums.forEach(el => statIO.observe(el));
+
+
+
+/* SMOOTH CTA BUTTONS */
+document.querySelectorAll('[onclick]').forEach(btn => {
+  btn.addEventListener('mouseenter', () => btn.style.transition = 'all .2s ease');
+});
+
+/* PARALLAX BLOBS */
+window.addEventListener('scroll', () => {
+  const y = window.scrollY;
+  const blobs = document.querySelectorAll('.mesh-blob');
+  blobs[0] && (blobs[0].style.transform = `translateY(${y * .05}px)`);
+  blobs[1] && (blobs[1].style.transform = `translateY(${-y * .03}px)`);
+}, { passive: true });
+</script>
+
+  <div class="mobile-nav-link-wrap"><a href="#pain"    class="mobile-nav-link" onclick="closeMobileMenu()">Sound familiar?</a></div>
+  <div class="mobile-nav-link-wrap"><a href="#demo"    class="mobile-nav-link" onclick="closeMobileMenu()">See it in action</a></div>
+  <div class="mobile-nav-link-wrap"><a href="#proof"   class="mobile-nav-link" onclick="closeMobileMenu()">What people say</a></div>
+  <div class="mobile-nav-link-wrap"><a href="#pricing" class="mobile-nav-link" onclick="closeMobileMenu()">Get the deal</a></div>
+
+  <div style="text-align:center;margin-top:36px;margin-bottom:16px">
+    <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:5px">⚡ Early bird — 47 spots left</div>
+    <div style="font-size:14px;color:var(--accent);font-weight:600">€9/month · locked in forever</div>
+  </div>
+  <div class="mobile-cta-wrap" style="display:flex;flex-direction:column;align-items:center;gap:10px">
+    <a href="#pricing" class="mobile-nav-cta" onclick="closeMobileMenu()">Start free — claim €9 spot →</a>
+    <span style="font-size:11px;color:var(--muted)">No credit card · 14 days free · cancel anytime</span>
+  </div>
+</div>
+
+
+<!-- MOBILE STICKY CTA -->
+<div class="mobile-sticky-cta">
+  <a href="#pricing">Start free — claim your €9 spot →</a>
+  <div class="sticky-sub">14 days free · no credit card · cancel anytime</div>
+</div>
+</body>
+</html>
