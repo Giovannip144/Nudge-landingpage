@@ -1070,7 +1070,7 @@ footer {
             <span style="color:var(--accent);font-size:13px;font-weight:600">🔒 Price locked at €9 forever — even when we raise it to €19</span>
           </li>
         </ul>
-        <button class="tier-cta" onclick="alert('Coming soon!')" style="font-size:15px;padding:16px">
+        <button class="tier-cta" onclick="onclick="openNudgeApp()" style="font-size:15px;padding:16px">
           Start free — 14 days, no card →
         </button>
       </div>
@@ -1118,7 +1118,7 @@ footer {
       </div>
       <h2 class="final-h2">The follow-up you<br>keep forgetting is<br>worth <em>€500</em>.</h2>
       <p class="final-sub">14 days free. No card. 2 minutes to set up. Tomorrow morning you get your first nudge — and you'll wonder how you managed without it.</p>
-      <button class="btn-primary" style="font-size:16px;padding:16px 48px" onclick="alert('Coming soon!')">
+      <button class="btn-primary" style="font-size:16px;padding:16px 48px" onclick="openNudgeApp()">
         Start free — claim your €9 spot →
       </button>
       <p class="final-note" style="margin-top:14px">14 days free · No credit card · €9/month after · Cancel anytime</p>
@@ -1231,6 +1231,10 @@ statNums.forEach(el => statIO.observe(el));
 document.querySelectorAll('[onclick]').forEach(btn => {
   btn.addEventListener('mouseenter', () => btn.style.transition = 'all .2s ease');
 });
+
+  function openNudgeApp() {
+    window.location.href = "https://nudge-neon.vercel.app/";
+}
 
 /* PARALLAX BLOBS */
 window.addEventListener('scroll', () => {
